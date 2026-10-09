@@ -1,0 +1,6 @@
+{
+  "name": "Smart Store POS Management System",
+  "description": "Sistem Kasir (POS) dan Manajemen Toko Terpadu dengan inventaris, pembelian, pengeluaran operasional, estimasi laba rugi, dan ekspor laporan PDF profesional.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
