@@ -23,9 +23,11 @@ import { useStore } from "@/lib/storage/store-context";
 import { Product, ProductStatus } from "@/types";
 import { formatRupiah, formatNumber, formatDateID, generateSKU } from "@/lib/utils";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function ProductsView() {
-  const { products, categories, suppliers, addProduct, updateProduct, deleteProduct, priceHistories } = useStore();
+  const { products, categories, suppliers, addProduct, updateProduct, deleteProduct, priceHistories, showToast } = useStore();
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -97,10 +99,10 @@ export function ProductsView() {
     setFormName("");
     setFormCategoryId(cat ? cat.id : "");
     setFormDescription("");
-    setFormImageUrl("https://picsum.photos/seed/" + Math.floor(Math.random() * 1000) + "/300/300");
+    setFormImageUrl("");
     setFormCostPrice(0);
     setFormSellPrice(0);
-    setFormStock(10);
+    setFormStock(0);
     setFormMinStock(5);
     setFormUnit("Pcs");
     setFormSupplierId(suppliers[0]?.id || "");
@@ -133,7 +135,7 @@ export function ProductsView() {
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim() || !formSku.trim()) {
-      alert("Nama produk dan SKU wajib diisi!");
+      showToast("Nama produk dan SKU wajib diisi!", "error");
       return;
     }
 
@@ -148,7 +150,7 @@ export function ProductsView() {
           barcode: formBarcode,
           name: formName,
           category_id: formCategoryId,
-          category_name: selectedCat?.name || "",
+          category_name: selectedCat?.name || "Umum",
           description: formDescription,
           image_url: formImageUrl,
           cost_price: Number(formCostPrice),
@@ -157,7 +159,7 @@ export function ProductsView() {
           min_stock: Number(formMinStock),
           unit: formUnit,
           supplier_id: formSupplierId,
-          supplier_name: selectedSup?.name || "",
+          supplier_name: selectedSup?.name || "-",
           status: formStatus,
         },
         priceChangeReason
@@ -168,7 +170,7 @@ export function ProductsView() {
         barcode: formBarcode,
         name: formName,
         category_id: formCategoryId,
-        category_name: selectedCat?.name || "",
+        category_name: selectedCat?.name || "Umum",
         description: formDescription,
         image_url: formImageUrl,
         cost_price: Number(formCostPrice),
@@ -177,7 +179,7 @@ export function ProductsView() {
         min_stock: Number(formMinStock),
         unit: formUnit,
         supplier_id: formSupplierId,
-        supplier_name: selectedSup?.name || "",
+        supplier_name: selectedSup?.name || "-",
         status: formStatus,
       });
     }
@@ -185,14 +187,9 @@ export function ProductsView() {
     setShowFormModal(false);
   };
 
-  // Delete product with safety warning
+  // Open Confirm Delete Modal
   const handleDelete = (p: Product) => {
-    if (confirm(`Apakah Anda yakin ingin menghapus produk "${p.name}"?`)) {
-      const res = deleteProduct(p.id);
-      if (!res.success) {
-        alert(res.message);
-      }
-    }
+    setProductToDelete(p);
   };
 
   // CSV Export
@@ -353,14 +350,18 @@ export function ProductsView() {
                     <tr key={p.id} className="hover:bg-slate-850/50 transition-colors">
                       <td className="p-3.5 pl-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-950 shrink-0 relative border border-slate-800">
-                            <Image
-                              src={p.image_url || "https://picsum.photos/seed/p/100/100"}
-                              alt={p.name}
-                              fill
-                              className="object-cover"
-                              referrerPolicy="no-referrer"
-                            />
+                          <div className="w-10 h-10 rounded-lg overflow-hidden bg-slate-950 shrink-0 relative border border-slate-800 flex items-center justify-center">
+                            {p.image_url ? (
+                              <Image
+                                src={p.image_url}
+                                alt={p.name}
+                                fill
+                                className="object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                            ) : (
+                              <Package className="w-5 h-5 text-slate-600" />
+                            )}
                           </div>
                           <div className="min-w-0">
                             <p className="font-bold text-slate-100 truncate">{p.name}</p>
@@ -429,9 +430,12 @@ export function ProductsView() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(p)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDelete(p);
+                            }}
                             title="Hapus Produk"
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -701,6 +705,22 @@ export function ProductsView() {
           )}
         </div>
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(productToDelete)}
+        onClose={() => setProductToDelete(null)}
+        onConfirm={() => {
+          if (productToDelete) {
+            deleteProduct(productToDelete.id);
+            setProductToDelete(null);
+          }
+        }}
+        title="Hapus Data Produk"
+        description={`Apakah Anda yakin ingin menghapus produk "${productToDelete?.name}" (${productToDelete?.sku})? Data produk akan dihapus secara permanen.`}
+        confirmText="Hapus Produk"
+        cancelText="Batal"
+      />
     </div>
   );
 }

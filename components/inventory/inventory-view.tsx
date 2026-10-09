@@ -12,14 +12,17 @@ import {
   Coins,
   FileText,
   Package,
+  Trash2,
 } from "lucide-react";
 import { useStore } from "@/lib/storage/store-context";
-import { MovementType } from "@/types";
+import { MovementType, InventoryMovement } from "@/types";
 import { formatRupiah, formatNumber, formatDateID } from "@/lib/utils";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function InventoryView() {
-  const { products, inventoryMovements, addStockAdjustment } = useStore();
+  const { products, inventoryMovements, addStockAdjustment, deleteInventoryMovement } = useStore();
+  const [movementToDelete, setMovementToDelete] = useState<InventoryMovement | null>(null);
 
   const [activeSubTab, setActiveSubTab] = useState<"overview" | "movements" | "alerts">("overview");
   const [searchQuery, setSearchQuery] = useState("");
@@ -266,13 +269,14 @@ export function InventoryView() {
                     <th className="p-3.5 text-center">Stok Sebelum</th>
                     <th className="p-3.5 text-center">Stok Akhir</th>
                     <th className="p-3.5">Referensi & Alasan</th>
-                    <th className="p-3.5 pr-4">Petugas</th>
+                    <th className="p-3.5">Petugas</th>
+                    <th className="p-3.5 pr-4 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60">
                   {filteredMovements.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-500">
+                      <td colSpan={9} className="p-8 text-center text-slate-500">
                         Belum ada mutasi stok yang tercatat.
                       </td>
                     </tr>
@@ -309,7 +313,19 @@ export function InventoryView() {
                             <span className="font-semibold text-slate-200">{m.reference_no}</span>
                             <span className="block text-[10px] text-slate-500">{m.reason}</span>
                           </td>
-                          <td className="p-3.5 pr-4 text-slate-400 text-[11px]">{m.created_by}</td>
+                          <td className="p-3.5 text-slate-400 text-[11px]">{m.created_by}</td>
+                          <td className="p-3.5 pr-4 text-center">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setMovementToDelete(m);
+                              }}
+                              title="Hapus Catatan Mutasi"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
                         </tr>
                       );
                     })
@@ -466,6 +482,22 @@ export function InventoryView() {
           </div>
         </form>
       </Modal>
+
+      {/* CONFIRM DELETE MOVEMENT MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(movementToDelete)}
+        onClose={() => setMovementToDelete(null)}
+        onConfirm={() => {
+          if (movementToDelete) {
+            deleteInventoryMovement(movementToDelete.id);
+            setMovementToDelete(null);
+          }
+        }}
+        title="Hapus Catatan Mutasi Stok"
+        description={`Apakah Anda yakin ingin menghapus catatan mutasi "${movementToDelete?.product_name}" (Ref: ${movementToDelete?.reference_no})?`}
+        confirmText="Hapus Catatan"
+        cancelText="Batal"
+      />
     </div>
   );
 }

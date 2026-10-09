@@ -185,7 +185,7 @@ export function Header({ onToggleMobile, setActiveTab }: HeaderProps) {
             className="flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Reset Data Contoh</span>
+            <span>Bersihkan Seluruh Data</span>
           </button>
 
           <button

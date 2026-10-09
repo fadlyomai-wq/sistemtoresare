@@ -13,15 +13,17 @@ import {
   Calendar,
   AlertTriangle,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
 import { useStore } from "@/lib/storage/store-context";
 import { Sale } from "@/types";
 import { formatRupiah, formatDateID } from "@/lib/utils";
 import { generateReceiptPDF } from "@/lib/pdf/generator";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function TransactionsView() {
-  const { sales, cancelSale, settings, currentUser } = useStore();
+  const { sales, cancelSale, deleteSale, settings, currentUser, showToast } = useStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
@@ -29,6 +31,7 @@ export function TransactionsView() {
 
   // Detail Modal
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
+  const [saleToDelete, setSaleToDelete] = useState<Sale | null>(null);
 
   // Cancel Transaction Modal
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
@@ -51,7 +54,7 @@ export function TransactionsView() {
 
   const handleOpenCancel = (sale: Sale) => {
     if (currentUser.role === "kasir") {
-      alert("Kasir tidak memiliki izin untuk membatalkan transaksi. Otorisasi Admin atau Owner diperlukan.");
+      showToast("Kasir tidak memiliki izin untuk membatalkan transaksi. Otorisasi Admin atau Owner diperlukan.", "warning");
       return;
     }
     setSaleToCancel(sale);
@@ -61,7 +64,7 @@ export function TransactionsView() {
   const handleConfirmCancel = (e: React.FormEvent) => {
     e.preventDefault();
     if (!saleToCancel || !cancelReason.trim()) {
-      alert("Harap masukkan alasan pembatalan transaksi.");
+      showToast("Harap masukkan alasan pembatalan transaksi.", "warning");
       return;
     }
 
@@ -69,7 +72,7 @@ export function TransactionsView() {
     if (res.success) {
       setSaleToCancel(null);
     } else {
-      alert(res.message);
+      showToast(res.message, "error");
     }
   };
 
@@ -212,9 +215,21 @@ export function TransactionsView() {
                             <button
                               onClick={() => handleOpenCancel(sale)}
                               title="Batalkan Transaksi (Otorisasi)"
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors"
                             >
                               <Ban className="w-4 h-4" />
+                            </button>
+                          )}
+                          {currentUser.role !== "kasir" && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSaleToDelete(sale);
+                              }}
+                              title="Hapus Transaksi Permanen"
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
                             </button>
                           )}
                         </div>
@@ -395,6 +410,22 @@ export function TransactionsView() {
           </div>
         </form>
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(saleToDelete)}
+        onClose={() => setSaleToDelete(null)}
+        onConfirm={() => {
+          if (saleToDelete) {
+            deleteSale(saleToDelete.id);
+            setSaleToDelete(null);
+          }
+        }}
+        title="Hapus Transaksi Penjualan"
+        description={`Apakah Anda yakin ingin menghapus transaksi invoice "${saleToDelete?.invoice_number}" secara permanen?`}
+        confirmText="Hapus Transaksi"
+        cancelText="Batal"
+      />
     </div>
   );
 }

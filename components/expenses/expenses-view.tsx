@@ -18,6 +18,7 @@ import { Expense, ExpenseCategory } from "@/types";
 import { formatRupiah, formatDateID } from "@/lib/utils";
 import { generateReportPDF } from "@/lib/pdf/generator";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 const EXPENSE_CATEGORIES: ExpenseCategory[] = [
   "Sewa Tempat",
@@ -33,13 +34,14 @@ const EXPENSE_CATEGORIES: ExpenseCategory[] = [
 ];
 
 export function ExpensesView() {
-  const { expenses, addExpense, updateExpense, deleteExpense, settings } = useStore();
+  const { expenses, addExpense, updateExpense, deleteExpense, settings, showToast } = useStore();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
+  const [expenseToDelete, setExpenseToDelete] = useState<Expense | null>(null);
 
   const [category, setCategory] = useState<ExpenseCategory>("Listrik");
   const [description, setDescription] = useState("");
@@ -85,7 +87,7 @@ export function ExpensesView() {
   const handleSave = (ev: React.FormEvent) => {
     ev.preventDefault();
     if (!description.trim() || amount <= 0) {
-      alert("Deskripsi dan nominal pengeluaran wajib diisi dengan benar.");
+      showToast("Deskripsi dan nominal pengeluaran wajib diisi dengan benar.", "error");
       return;
     }
 
@@ -112,9 +114,7 @@ export function ExpensesView() {
   };
 
   const handleDelete = (e: Expense) => {
-    if (confirm(`Hapus pengeluaran "${e.description}" senilai ${formatRupiah(e.amount)}?`)) {
-      deleteExpense(e.id);
-    }
+    setExpenseToDelete(e);
   };
 
   const handleExportPDF = () => {
@@ -292,9 +292,12 @@ export function ExpensesView() {
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          onClick={() => handleDelete(exp)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                          title="Hapus"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(exp);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                          title="Hapus Pengeluaran"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -398,6 +401,22 @@ export function ExpensesView() {
           </div>
         </form>
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(expenseToDelete)}
+        onClose={() => setExpenseToDelete(null)}
+        onConfirm={() => {
+          if (expenseToDelete) {
+            deleteExpense(expenseToDelete.id);
+            setExpenseToDelete(null);
+          }
+        }}
+        title="Hapus Pengeluaran"
+        description={`Apakah Anda yakin ingin menghapus catatan pengeluaran "${expenseToDelete?.description}" sebesar ${formatRupiah(expenseToDelete?.amount || 0)}?`}
+        confirmText="Hapus Pengeluaran"
+        cancelText="Batal"
+      />
     </div>
   );
 }

@@ -42,6 +42,8 @@ export interface ToastMessage {
 interface StoreContextType {
   currentUser: UserProfile;
   setCurrentUser: (user: UserProfile) => void;
+  adminProfile: { name: string; email: string };
+  updateAdminProfile: (params: { name: string; email: string }) => void;
   switchRole: (role: UserRole) => void;
 
   settings: StoreSettings;
@@ -65,11 +67,12 @@ interface StoreContextType {
 
   purchases: Purchase[];
   addPurchase: (purchase: Omit<Purchase, "id" | "purchase_number" | "created_at" | "created_by">) => boolean;
+  deletePurchase: (id: string) => { success: boolean; message: string };
 
   expenses: Expense[];
   addExpense: (expense: Omit<Expense, "id" | "expense_number" | "created_at" | "created_by">) => void;
   updateExpense: (id: string, updates: Partial<Expense>) => void;
-  deleteExpense: (id: string) => void;
+  deleteExpense: (id: string) => { success: boolean; message: string };
 
   sales: Sale[];
   completeCheckout: (params: {
@@ -82,6 +85,7 @@ interface StoreContextType {
     notes?: string;
   }) => { success: boolean; sale?: Sale; message?: string };
   cancelSale: (saleId: string, reason: string) => { success: boolean; message: string };
+  deleteSale: (saleId: string) => { success: boolean; message: string };
 
   inventoryMovements: InventoryMovement[];
   addStockAdjustment: (params: {
@@ -90,6 +94,7 @@ interface StoreContextType {
     quantity: number;
     reason: string;
   }) => boolean;
+  deleteInventoryMovement: (id: string) => { success: boolean; message: string };
 
   auditLogs: AuditLog[];
   priceHistories: ProductPriceHistory[];
@@ -98,6 +103,7 @@ interface StoreContextType {
   showToast: (message: string, type?: "success" | "error" | "info" | "warning") => void;
   removeToast: (id: string) => void;
 
+  clearAllData: () => void;
   resetToDefaultData: () => void;
   isLoaded: boolean;
 }
@@ -115,16 +121,24 @@ const STORAGE_KEYS = {
   MOVEMENTS: "smartpos_movements",
   AUDIT_LOGS: "smartpos_audit_logs",
   USER: "smartpos_current_user",
+  ADMIN_PROFILE: "smartpos_admin_profile",
   PRICE_HISTORIES: "smartpos_price_histories",
+  PURGE_FLAG: "smartpos_clean_slate_v6",
 };
 
 export const StoreProvider = ({ children }: { children: ReactNode }) => {
   const [isLoaded, setIsLoaded] = useState(false);
 
+  // Admin profile state
+  const [adminProfile, setAdminProfileState] = useState<{ name: string; email: string }>({
+    name: "Administrator",
+    email: "admin@smartstore.com",
+  });
+
   const [currentUser, setCurrentUserState] = useState<UserProfile>({
     id: "usr-admin",
-    name: "Ahmad Dahlan",
-    email: "admin@smartstore.id",
+    name: "Administrator",
+    email: "admin@smartstore.com",
     role: "admin",
     store_id: "store-001",
   });
@@ -153,44 +167,102 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  // Hydrate from localStorage on client-side mount
+  // Hydrate and guarantee clean slate without dummy data
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     queueMicrotask(() => {
       try {
-        const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
-        if (storedSettings) setSettingsState(JSON.parse(storedSettings));
+        const isPurged = localStorage.getItem(STORAGE_KEYS.PURGE_FLAG);
+        if (!isPurged) {
+          // Force purge all legacy dummy/seed data
+          localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+          localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
+          localStorage.removeItem(STORAGE_KEYS.SUPPLIERS);
+          localStorage.removeItem(STORAGE_KEYS.PURCHASES);
+          localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+          localStorage.removeItem(STORAGE_KEYS.SALES);
+          localStorage.removeItem(STORAGE_KEYS.MOVEMENTS);
+          localStorage.removeItem(STORAGE_KEYS.PRICE_HISTORIES);
+          localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
+          localStorage.setItem(STORAGE_KEYS.PURGE_FLAG, "true");
 
+          setCategoriesState([]);
+          setProductsState([]);
+          setSuppliersState([]);
+          setPurchasesState([]);
+          setExpensesState([]);
+          setSalesState([]);
+          setInventoryMovementsState([]);
+          setPriceHistoriesState([]);
+          setAuditLogsState([]);
+        } else {
+          const storedSettings = localStorage.getItem(STORAGE_KEYS.SETTINGS);
+          if (storedSettings) setSettingsState(JSON.parse(storedSettings));
+
+          const storedCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
+          if (storedCategories) setCategoriesState(JSON.parse(storedCategories));
+
+          const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
+          if (storedProducts) setProductsState(JSON.parse(storedProducts));
+
+          const storedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
+          if (storedSuppliers) setSuppliersState(JSON.parse(storedSuppliers));
+
+          const storedPurchases = localStorage.getItem(STORAGE_KEYS.PURCHASES);
+          if (storedPurchases) setPurchasesState(JSON.parse(storedPurchases));
+
+          const storedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
+          if (storedExpenses) setExpensesState(JSON.parse(storedExpenses));
+
+          const storedSales = localStorage.getItem(STORAGE_KEYS.SALES);
+          if (storedSales) setSalesState(JSON.parse(storedSales));
+
+          const storedMovements = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
+          if (storedMovements) setInventoryMovementsState(JSON.parse(storedMovements));
+
+          const storedAudit = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
+          if (storedAudit) setAuditLogsState(JSON.parse(storedAudit));
+
+          const storedPriceHist = localStorage.getItem(STORAGE_KEYS.PRICE_HISTORIES);
+          if (storedPriceHist) setPriceHistoriesState(JSON.parse(storedPriceHist));
+        }
+
+        // Hydrate Admin Profile
+        const storedAdminProfile = localStorage.getItem(STORAGE_KEYS.ADMIN_PROFILE);
+        let currentAdmin = { name: "Administrator", email: "admin@smartstore.com" };
+        if (storedAdminProfile) {
+          try {
+            const parsed = JSON.parse(storedAdminProfile);
+            if (parsed.name) currentAdmin = parsed;
+            setAdminProfileState(currentAdmin);
+          } catch (e) {
+            console.error("Error reading admin profile:", e);
+          }
+        }
+
+        // Hydrate Current User
         const storedUser = localStorage.getItem(STORAGE_KEYS.USER);
-        if (storedUser) setCurrentUserState(JSON.parse(storedUser));
-
-        const storedCategories = localStorage.getItem(STORAGE_KEYS.CATEGORIES);
-        if (storedCategories) setCategoriesState(JSON.parse(storedCategories));
-
-        const storedProducts = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
-        if (storedProducts) setProductsState(JSON.parse(storedProducts));
-
-        const storedSuppliers = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
-        if (storedSuppliers) setSuppliersState(JSON.parse(storedSuppliers));
-
-        const storedPurchases = localStorage.getItem(STORAGE_KEYS.PURCHASES);
-        if (storedPurchases) setPurchasesState(JSON.parse(storedPurchases));
-
-        const storedExpenses = localStorage.getItem(STORAGE_KEYS.EXPENSES);
-        if (storedExpenses) setExpensesState(JSON.parse(storedExpenses));
-
-        const storedSales = localStorage.getItem(STORAGE_KEYS.SALES);
-        if (storedSales) setSalesState(JSON.parse(storedSales));
-
-        const storedMovements = localStorage.getItem(STORAGE_KEYS.MOVEMENTS);
-        if (storedMovements) setInventoryMovementsState(JSON.parse(storedMovements));
-
-        const storedAudit = localStorage.getItem(STORAGE_KEYS.AUDIT_LOGS);
-        if (storedAudit) setAuditLogsState(JSON.parse(storedAudit));
-
-        const storedPriceHist = localStorage.getItem(STORAGE_KEYS.PRICE_HISTORIES);
-        if (storedPriceHist) setPriceHistoriesState(JSON.parse(storedPriceHist));
+        if (storedUser) {
+          try {
+            const parsed = JSON.parse(storedUser);
+            if (parsed.role === "admin") {
+              parsed.name = currentAdmin.name;
+              parsed.email = currentAdmin.email || parsed.email;
+            }
+            setCurrentUserState(parsed);
+          } catch (e) {
+            console.error("Error reading current user:", e);
+          }
+        } else {
+          setCurrentUserState({
+            id: "usr-admin",
+            name: currentAdmin.name,
+            email: currentAdmin.email,
+            role: "admin",
+            store_id: "store-001",
+          });
+        }
       } catch (e) {
         console.error("Error reading localStorage:", e);
       } finally {
@@ -214,24 +286,76 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     setAuditLogsState((prev) => {
       const updated = [newLog, ...prev];
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(updated));
+        try {
+          localStorage.setItem(STORAGE_KEYS.AUDIT_LOGS, JSON.stringify(updated));
+        } catch (e) {
+          console.error(e);
+        }
       }
       return updated;
     });
   }, [currentUser]);
 
+  // Update Admin Profile (name and email)
+  const updateAdminProfile = useCallback(
+    ({ name, email }: { name: string; email: string }) => {
+      const trimmedName = name.trim();
+      const trimmedEmail = email.trim() || "admin@smartstore.com";
+      if (!trimmedName) {
+        showToast("Nama administrator tidak boleh kosong.", "error");
+        return;
+      }
+
+      const updatedProfile = {
+        name: trimmedName,
+        email: trimmedEmail,
+      };
+
+      setAdminProfileState(updatedProfile);
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem(STORAGE_KEYS.ADMIN_PROFILE, JSON.stringify(updatedProfile));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      // If currently acting as admin, update currentUser immediately
+      setCurrentUserState((prev) => {
+        const isCurrentAdmin = prev.role === "admin";
+        const newCurrentUser = {
+          ...prev,
+          name: isCurrentAdmin ? trimmedName : prev.name,
+          email: isCurrentAdmin ? trimmedEmail : prev.email,
+        };
+        if (typeof window !== "undefined" && isCurrentAdmin) {
+          try {
+            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(newCurrentUser));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return newCurrentUser;
+      });
+
+      logAudit("UBAH_NAMA_ADMIN", "Pengaturan", `Nama admin diubah menjadi "${trimmedName}"`);
+      showToast(`Nama administrator berhasil diperbarui menjadi "${trimmedName}"!`, "success");
+    },
+    [logAudit, showToast]
+  );
+
   const switchRole = useCallback((role: UserRole) => {
-    let name = "Ahmad Dahlan";
-    let email = "admin@smartstore.id";
+    let name = adminProfile.name || "Administrator";
+    let email = adminProfile.email || "admin@smartstore.com";
     let id = "usr-admin";
 
     if (role === "kasir") {
       name = "Sarah Melinda";
-      email = "kasir@smartstore.id";
+      email = "kasir@smartstore.com";
       id = "usr-kasir";
     } else if (role === "owner") {
-      name = "Hendra Gunawan";
-      email = "owner@smartstore.id";
+      name = "Pemilik Toko";
+      email = "owner@smartstore.com";
       id = "usr-owner";
     }
 
@@ -245,15 +369,23 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
 
     setCurrentUserState(updatedUser);
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+      try {
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+      } catch (e) {
+        console.error(e);
+      }
     }
     showToast(`Beralih ke akun ${name} (Role: ${role.toUpperCase()})`, "info");
-  }, [showToast]);
+  }, [adminProfile.name, adminProfile.email, showToast]);
 
   const setCurrentUser = useCallback((user: UserProfile) => {
     setCurrentUserState(user);
     if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      try {
+        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+      } catch (e) {
+        console.error(e);
+      }
     }
   }, []);
 
@@ -261,12 +393,16 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     setSettingsState((prev) => {
       const updated = { ...prev, ...newSettings };
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+        try {
+          localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+        } catch (e) {
+          console.error(e);
+        }
       }
       return updated;
     });
     logAudit("UPDATE_SETTINGS", "Pengaturan", "Memperbarui konfigurasi sistem toko");
-    showToast("Pengaturan toko berhasil diperbarui!", "success");
+    showToast("Pengaturan toko berhasil disimpan!", "success");
   }, [logAudit, showToast]);
 
   // Product CRUD
@@ -283,12 +419,15 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setProductsState((prev) => {
         const updated = [newProd, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return updated;
       });
 
-      // If initial stock > 0, log movement
       if (newProd.stock > 0) {
         const movement: InventoryMovement = {
           id: "mov-" + Date.now(),
@@ -306,14 +445,18 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         setInventoryMovementsState((prev) => {
           const upd = [movement, ...prev];
           if (typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(upd));
+            try {
+              localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(upd));
+            } catch (e) {
+              console.error(e);
+            }
           }
           return upd;
         });
       }
 
-      logAudit("TAMBAH_PRODUK", "Produk", `Menambahkan produk baru: ${newProd.name} (${newProd.sku})`);
-      showToast(`Produk ${newProd.name} berhasil ditambahkan!`, "success");
+      logAudit("TAMBAH_PRODUK", "Produk", `Menambahkan produk: ${newProd.name} (${newProd.sku})`);
+      showToast(`Produk "${newProd.name}" berhasil ditambahkan!`, "success");
       return true;
     },
     [currentUser.name, logAudit, showToast]
@@ -322,75 +465,102 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   const updateProduct = useCallback(
     (id: string, updates: Partial<Product>, priceReason?: string): boolean => {
       let priceChangeRecorded = false;
-      const target = products.find((p) => p.id === id);
-      if (!target) return false;
-
-      // Price change history check
-      if (
-        (updates.cost_price !== undefined && updates.cost_price !== target.cost_price) ||
-        (updates.sell_price !== undefined && updates.sell_price !== target.sell_price)
-      ) {
-        const hist: ProductPriceHistory = {
-          id: "ph-" + Date.now(),
-          product_id: id,
-          old_cost_price: target.cost_price,
-          new_cost_price: updates.cost_price ?? target.cost_price,
-          old_sell_price: target.sell_price,
-          new_sell_price: updates.sell_price ?? target.sell_price,
-          changed_by: currentUser.name,
-          changed_at: new Date().toISOString(),
-          reason: priceReason || "Perubahan harga satuan",
-        };
-        setPriceHistoriesState((prev) => {
-          const upd = [hist, ...prev];
-          if (typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEYS.PRICE_HISTORIES, JSON.stringify(upd));
-          }
-          return upd;
-        });
-        priceChangeRecorded = true;
-      }
+      let targetName = "";
 
       setProductsState((prev) => {
+        const target = prev.find((p) => p.id === id);
+        if (!target) return prev;
+        targetName = target.name;
+
+        if (
+          (updates.cost_price !== undefined && updates.cost_price !== target.cost_price) ||
+          (updates.sell_price !== undefined && updates.sell_price !== target.sell_price)
+        ) {
+          const hist: ProductPriceHistory = {
+            id: "ph-" + Date.now(),
+            product_id: id,
+            old_cost_price: target.cost_price,
+            new_cost_price: updates.cost_price ?? target.cost_price,
+            old_sell_price: target.sell_price,
+            new_sell_price: updates.sell_price ?? target.sell_price,
+            changed_by: currentUser.name,
+            changed_at: new Date().toISOString(),
+            reason: priceReason || "Perubahan harga satuan",
+          };
+          setPriceHistoriesState((hPrev) => {
+            const upd = [hist, ...hPrev];
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem(STORAGE_KEYS.PRICE_HISTORIES, JSON.stringify(upd));
+              } catch (e) {
+                console.error(e);
+              }
+            }
+            return upd;
+          });
+          priceChangeRecorded = true;
+        }
+
         const updated = prev.map((p) => (p.id === id ? { ...p, ...updates, updated_at: new Date().toISOString() } : p));
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return updated;
       });
 
-      logAudit("EDIT_PRODUK", "Produk", `Memperbarui data produk: ${target.name}${priceChangeRecorded ? " (Termasuk harga)" : ""}`);
+      logAudit("EDIT_PRODUK", "Produk", `Memperbarui produk: ${targetName || id}${priceChangeRecorded ? " (Harga diubah)" : ""}`);
       showToast("Data produk berhasil disimpan!", "success");
       return true;
     },
-    [products, currentUser.name, logAudit, showToast]
+    [currentUser.name, logAudit, showToast]
   );
 
+  // Reliable, guaranteed deleteProduct
   const deleteProduct = useCallback(
     (id: string): { success: boolean; message: string } => {
-      // Check if product exists in any historical sales
-      const isUsedInSales = sales.some((s) => s.items.some((i) => i.product_id === id));
-      if (isUsedInSales) {
-        return {
-          success: false,
-          message: "Produk ini tidak dapat dihapus permanen karena memiliki riwayat transaksi penjualan. Anda dapat menonaktifkan status produk menjadi Non-Aktif.",
-        };
-      }
+      let deletedName = "";
+      let deletedSku = "";
 
-      const target = products.find((p) => p.id === id);
       setProductsState((prev) => {
+        const target = prev.find((p) => p.id === id);
+        if (target) {
+          deletedName = target.name;
+          deletedSku = target.sku;
+        }
         const updated = prev.filter((p) => p.id !== id);
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return updated;
       });
 
-      logAudit("HAPUS_PRODUK", "Produk", `Menghapus produk: ${target?.name || id}`);
-      showToast(`Produk ${target?.name || ""} berhasil dihapus!`, "info");
+      // Also clean up any associated price history
+      setPriceHistoriesState((prev) => {
+        const upd = prev.filter((ph) => ph.product_id !== id);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRICE_HISTORIES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return upd;
+      });
+
+      const label = deletedName || "Produk";
+      logAudit("HAPUS_PRODUK", "Produk", `Menghapus produk: ${label} (${deletedSku || id})`);
+      showToast(`Produk "${label}" berhasil dihapus.`, "success");
       return { success: true, message: "Produk berhasil dihapus." };
     },
-    [products, sales, logAudit, showToast]
+    [logAudit, showToast]
   );
 
   // Category CRUD
@@ -404,12 +574,16 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setCategoriesState((prev) => {
         const upd = [newCat, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
       logAudit("TAMBAH_KATEGORI", "Kategori", `Menambahkan kategori: ${newCat.name}`);
-      showToast(`Kategori ${newCat.name} berhasil ditambahkan!`, "success");
+      showToast(`Kategori "${newCat.name}" berhasil ditambahkan!`, "success");
     },
     [logAudit, showToast]
   );
@@ -419,7 +593,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setCategoriesState((prev) => {
         const upd = prev.map((c) => (c.id === id ? { ...c, ...updates } : c));
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -429,26 +607,46 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     [logAudit, showToast]
   );
 
+  // Reliable deleteCategory: reassigns products to "Umum" if needed
   const deleteCategory = useCallback(
     (id: string): { success: boolean; message: string } => {
-      const hasProducts = products.some((p) => p.category_id === id);
-      if (hasProducts) {
-        return {
-          success: false,
-          message: "Kategori tidak dapat dihapus karena masih digunakan oleh beberapa produk aktif.",
-        };
-      }
+      let catName = "";
+
       setCategoriesState((prev) => {
+        const target = prev.find((c) => c.id === id);
+        if (target) catName = target.name;
         const upd = prev.filter((c) => c.id !== id);
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
-      showToast("Kategori berhasil dihapus!", "info");
+
+      // Reassign affected products gracefully
+      setProductsState((prev) => {
+        const updated = prev.map((p) =>
+          p.category_id === id ? { ...p, category_id: "", category_name: "Umum" } : p
+        );
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return updated;
+      });
+
+      const label = catName || "Kategori";
+      logAudit("HAPUS_KATEGORI", "Kategori", `Menghapus kategori: ${label}`);
+      showToast(`Kategori "${label}" berhasil dihapus.`, "success");
       return { success: true, message: "Kategori berhasil dihapus." };
     },
-    [products, showToast]
+    [logAudit, showToast]
   );
 
   // Supplier CRUD
@@ -462,12 +660,16 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setSuppliersState((prev) => {
         const upd = [newSup, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
       logAudit("TAMBAH_SUPPLIER", "Supplier", `Menambahkan supplier: ${newSup.name}`);
-      showToast(`Supplier ${newSup.name} berhasil ditambahkan!`, "success");
+      showToast(`Supplier "${newSup.name}" berhasil ditambahkan!`, "success");
     },
     [logAudit, showToast]
   );
@@ -477,7 +679,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setSuppliersState((prev) => {
         const upd = prev.map((s) => (s.id === id ? { ...s, ...updates } : s));
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -488,55 +694,70 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteSupplier = useCallback(
     (id: string): { success: boolean; message: string } => {
-      const hasPurchases = purchases.some((p) => p.supplier_id === id);
-      if (hasPurchases) {
-        return {
-          success: false,
-          message: "Supplier ini memiliki riwayat transaksi pembelian dan tidak dapat dihapus.",
-        };
-      }
+      let supName = "";
+
       setSuppliersState((prev) => {
+        const target = prev.find((s) => s.id === id);
+        if (target) supName = target.name;
         const upd = prev.filter((s) => s.id !== id);
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
-      showToast("Supplier berhasil dihapus.", "info");
+
+      const label = supName || "Supplier";
+      logAudit("HAPUS_SUPPLIER", "Supplier", `Menghapus supplier: ${label}`);
+      showToast(`Supplier "${label}" berhasil dihapus.`, "success");
       return { success: true, message: "Supplier berhasil dihapus." };
     },
-    [purchases, showToast]
+    [logAudit, showToast]
   );
 
   const recordSupplierPayment = useCallback(
     (purchaseId: string, amount: number, paymentMethod: "tunai" | "transfer_bank", notes: string): boolean => {
-      const purchase = purchases.find((p) => p.id === purchaseId);
-      if (!purchase) return false;
+      let purchaseTarget: Purchase | undefined;
 
-      const newRemainingDebt = Math.max(0, purchase.remaining_debt - amount);
-      const newPaidAmount = purchase.paid_amount + amount;
-      const newStatus: PurchasePaymentStatus = newRemainingDebt === 0 ? "lunas" : "sebagian";
-
-      // Update purchase record
       setPurchasesState((prev) => {
+        const purchase = prev.find((p) => p.id === purchaseId);
+        if (!purchase) return prev;
+        purchaseTarget = purchase;
+
+        const newRemainingDebt = Math.max(0, purchase.remaining_debt - amount);
+        const newPaidAmount = purchase.paid_amount + amount;
+        const newStatus: PurchasePaymentStatus = newRemainingDebt === 0 ? "lunas" : "sebagian";
+
         const upd = prev.map((p) =>
           p.id === purchaseId
             ? { ...p, paid_amount: newPaidAmount, remaining_debt: newRemainingDebt, payment_status: newStatus }
             : p
         );
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
 
-      // Update supplier debt total
+      if (!purchaseTarget) return false;
+
       setSuppliersState((prev) => {
         const upd = prev.map((s) =>
-          s.id === purchase.supplier_id ? { ...s, total_debt: Math.max(0, s.total_debt - amount) } : s
+          s.id === purchaseTarget?.supplier_id ? { ...s, total_debt: Math.max(0, s.total_debt - amount) } : s
         );
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -544,15 +765,15 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       logAudit(
         "BAYAR_HUTANG_SUPPLIER",
         "Pembelian",
-        `Membayar hutang pembelian ${purchase.purchase_number} ke ${purchase.supplier_name} sebesar Rp ${amount.toLocaleString()}`
+        `Membayar hutang pembelian ${purchaseTarget.purchase_number} ke ${purchaseTarget.supplier_name} sebesar Rp ${amount.toLocaleString()}`
       );
       showToast("Pembayaran hutang supplier berhasil dicatat!", "success");
       return true;
     },
-    [purchases, logAudit, showToast]
+    [logAudit, showToast]
   );
 
-  // Purchase Order with automatic stock increment
+  // Purchase Order
   const addPurchase = useCallback(
     (purchaseData: Omit<Purchase, "id" | "purchase_number" | "created_at" | "created_by">): boolean => {
       const now = new Date().toISOString();
@@ -566,16 +787,18 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         created_at: now,
       };
 
-      // 1. Save purchase
       setPurchasesState((prev) => {
         const upd = [newPurchase, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
 
-      // 2. If status is received ("diterima"), immediately increment products stock & log movements!
       if (newPurchase.receive_status === "diterima") {
         setProductsState((prev) => {
           const updated = [...prev];
@@ -587,11 +810,10 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
               updated[idx] = {
                 ...updated[idx],
                 stock: newStock,
-                cost_price: item.cost_price, // Update latest purchase cost
+                cost_price: item.cost_price,
                 updated_at: now,
               };
 
-              // Movement log
               const movement: InventoryMovement = {
                 id: "mov-" + Math.random().toString(36).substring(2, 9),
                 product_id: item.product_id,
@@ -601,7 +823,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
                 previous_stock: prevStock,
                 current_stock: newStock,
                 reference_no: purchaseNumber,
-                reason: `Pembelian dari ${newPurchase.supplier_name} (${newPurchase.purchase_category})`,
+                reason: `Pembelian dari ${newPurchase.supplier_name}`,
                 created_by: currentUser.name,
                 created_at: now,
               };
@@ -609,7 +831,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
               setInventoryMovementsState((mPrev) => {
                 const mUpd = [movement, ...mPrev];
                 if (typeof window !== "undefined") {
-                  localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(mUpd));
+                  try {
+                    localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(mUpd));
+                  } catch (e) {
+                    console.error(e);
+                  }
                 }
                 return mUpd;
               });
@@ -617,20 +843,27 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
           });
 
           if (typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+            try {
+              localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updated));
+            } catch (e) {
+              console.error(e);
+            }
           }
           return updated;
         });
       }
 
-      // 3. If utang (remaining debt > 0), increase supplier debt
       if (newPurchase.remaining_debt > 0) {
         setSuppliersState((prev) => {
           const upd = prev.map((s) =>
             s.id === newPurchase.supplier_id ? { ...s, total_debt: s.total_debt + newPurchase.remaining_debt } : s
           );
           if (typeof window !== "undefined") {
-            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+            try {
+              localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(upd));
+            } catch (e) {
+              console.error(e);
+            }
           }
           return upd;
         });
@@ -641,6 +874,32 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       return true;
     },
     [currentUser.name, logAudit, showToast]
+  );
+
+  const deletePurchase = useCallback(
+    (id: string): { success: boolean; message: string } => {
+      let poNumber = "";
+
+      setPurchasesState((prev) => {
+        const target = prev.find((p) => p.id === id);
+        if (target) poNumber = target.purchase_number;
+        const upd = prev.filter((p) => p.id !== id);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEYS.PURCHASES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return upd;
+      });
+
+      const label = poNumber || id;
+      logAudit("HAPUS_PEMBELIAN", "Pembelian", `Menghapus faktur pembelian: ${label}`);
+      showToast(`Faktur pembelian "${label}" berhasil dihapus.`, "success");
+      return { success: true, message: "Faktur pembelian berhasil dihapus." };
+    },
+    [logAudit, showToast]
   );
 
   // Expenses CRUD
@@ -660,7 +919,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setExpensesState((prev) => {
         const upd = [newExpense, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -676,7 +939,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setExpensesState((prev) => {
         const upd = prev.map((e) => (e.id === id ? { ...e, ...updates } : e));
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -686,17 +953,29 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const deleteExpense = useCallback(
-    (id: string) => {
+    (id: string): { success: boolean; message: string } => {
+      let expDesc = "";
+
       setExpensesState((prev) => {
+        const target = prev.find((e) => e.id === id);
+        if (target) expDesc = target.description;
         const upd = prev.filter((e) => e.id !== id);
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
-      showToast("Pengeluaran berhasil dihapus.", "info");
+
+      const label = expDesc || id;
+      logAudit("HAPUS_PENGELUARAN", "Pengeluaran", `Menghapus pengeluaran: ${label}`);
+      showToast(`Pengeluaran "${label}" berhasil dihapus.`, "success");
+      return { success: true, message: "Pengeluaran berhasil dihapus." };
     },
-    [showToast]
+    [logAudit, showToast]
   );
 
   // ATOMIC POINT OF SALE CHECKOUT
@@ -722,11 +1001,10 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         return { success: false, message: "Keranjang belanja masih kosong." };
       }
 
-      // Step 1: Pre-flight stock validation
       for (const item of cart) {
         const liveProd = products.find((p) => p.id === item.product.id);
         if (!liveProd) {
-          return { success: false, message: `Produk ${item.product.name} tidak ditemukan di sistem.` };
+          return { success: false, message: `Produk "${item.product.name}" tidak ditemukan di sistem.` };
         }
         if (liveProd.stock < item.quantity) {
           return {
@@ -736,7 +1014,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         }
       }
 
-      // Step 2: Accurate financial calculation
       const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
       const itemDiscounts = cart.reduce((sum, item) => sum + item.discount_amount, 0);
       const transactionDiscount = Math.round((subtotal * discountPercent) / 100);
@@ -745,7 +1022,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       const taxAmount = settings.enable_tax ? Math.round((afterDiscount * settings.tax_rate) / 100) : 0;
       const totalAmount = afterDiscount + taxAmount;
 
-      // Validate payment coverage
       if (paidAmount < totalAmount) {
         return {
           success: false,
@@ -754,15 +1030,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const changeAmount = paidAmount - totalAmount;
-
-      // HPP calculation per unit
       const totalCostPrice = cart.reduce((sum, item) => sum + item.product.cost_price * item.quantity, 0);
       const grossProfit = afterDiscount - totalCostPrice;
 
       const now = new Date().toISOString();
       const invoiceNumber = generateInvoiceCode(settings.invoice_prefix || "INV");
-
-      // Primary payment method label
       const primaryMethod: PaymentMethod = payments.length === 1 ? payments[0].method : "split";
 
       const newSale: Sale = {
@@ -802,7 +1074,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         created_at: now,
       };
 
-      // Step 3: Atomic stock decrement & inventory movement creation
       const updatedMovements: InventoryMovement[] = [];
       const updatedProducts = products.map((prod) => {
         const inCart = cart.find((ci) => ci.product.id === prod.id);
@@ -833,18 +1104,18 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         return prod;
       });
 
-      // Commit changes to state and localStorage atomically
       setProductsState(updatedProducts);
-      setInventoryMovementsState((prev) => [ ...updatedMovements, ...prev ]);
+      setInventoryMovementsState((prev) => [...updatedMovements, ...prev]);
       setSalesState((prev) => [newSale, ...prev]);
 
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updatedProducts));
-        localStorage.setItem(
-          STORAGE_KEYS.MOVEMENTS,
-          JSON.stringify([...updatedMovements, ...inventoryMovements])
-        );
-        localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify([newSale, ...sales]));
+        try {
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updatedProducts));
+          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify([...updatedMovements, ...inventoryMovements]));
+          localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify([newSale, ...sales]));
+        } catch (e) {
+          console.error(e);
+        }
       }
 
       logAudit(
@@ -853,7 +1124,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         `Invoice ${invoiceNumber} berhasil diselesaikan. Total: Rp ${totalAmount.toLocaleString()} oleh ${currentUser.name}`
       );
 
-      // Trigger celebratory confetti
       try {
         confetti({
           particleCount: 50,
@@ -861,7 +1131,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
           origin: { y: 0.8 },
         });
       } catch {
-        // ignore if not rendered
+        // ignore
       }
 
       showToast(`Transaksi ${invoiceNumber} sukses disimpan!`, "success");
@@ -870,7 +1140,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
     [currentUser, products, settings, inventoryMovements, sales, logAudit, showToast]
   );
 
-  // Cancel transaction with stock restoration & audit trail
+  // Cancel transaction
   const cancelSale = useCallback(
     (saleId: string, reason: string): { success: boolean; message: string } => {
       const targetSale = sales.find((s) => s.id === saleId);
@@ -883,7 +1153,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
 
       const now = new Date().toISOString();
 
-      // Step 1: Restore stock for all items
       const updatedMovements: InventoryMovement[] = [];
       const updatedProducts = products.map((prod) => {
         const item = targetSale.items.find((si) => si.product_id === prod.id);
@@ -914,7 +1183,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         return prod;
       });
 
-      // Step 2: Mark sale as cancelled
       const updatedSales = sales.map((s) =>
         s.id === saleId
           ? {
@@ -932,24 +1200,50 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setSalesState(updatedSales);
 
       if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updatedProducts));
-        localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify([...updatedMovements, ...inventoryMovements]));
-        localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(updatedSales));
+        try {
+          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(updatedProducts));
+          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify([...updatedMovements, ...inventoryMovements]));
+          localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(updatedSales));
+        } catch (e) {
+          console.error(e);
+        }
       }
 
-      logAudit(
-        "BATALKAN_TRANSAKSI",
-        "Transaksi",
-        `Membatalkan invoice ${targetSale.invoice_number}. Alasan: ${reason}`
-      );
-
+      logAudit("BATALKAN_TRANSAKSI", "Transaksi", `Membatalkan invoice ${targetSale.invoice_number}. Alasan: ${reason}`);
       showToast(`Transaksi ${targetSale.invoice_number} berhasil dibatalkan dan stok dikembalikan!`, "warning");
       return { success: true, message: "Transaksi berhasil dibatalkan." };
     },
     [sales, products, currentUser.name, inventoryMovements, logAudit, showToast]
   );
 
-  // Manual stock adjustment / opname
+  // Permanently delete a sale record
+  const deleteSale = useCallback(
+    (saleId: string): { success: boolean; message: string } => {
+      let invNumber = "";
+
+      setSalesState((prev) => {
+        const target = prev.find((s) => s.id === saleId);
+        if (target) invNumber = target.invoice_number;
+        const upd = prev.filter((s) => s.id !== saleId);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return upd;
+      });
+
+      const label = invNumber || saleId;
+      logAudit("HAPUS_TRANSAKSI", "Transaksi", `Menghapus faktur invoice ${label}`);
+      showToast(`Invoice "${label}" berhasil dihapus dari riwayat.`, "success");
+      return { success: true, message: "Invoice berhasil dihapus." };
+    },
+    [logAudit, showToast]
+  );
+
+  // Manual stock adjustment
   const addStockAdjustment = useCallback(
     ({
       productId,
@@ -973,7 +1267,6 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       } else if (type === "stok_keluar") {
         newStock = Math.max(0, prevStock - Math.abs(quantity));
       } else if (type === "penyesuaian") {
-        // Direct set
         newStock = Math.max(0, quantity);
       }
 
@@ -997,7 +1290,11 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setProductsState((prev) => {
         const upd = prev.map((p) => (p.id === productId ? { ...p, stock: newStock, updated_at: now } : p));
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
@@ -1005,40 +1302,90 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
       setInventoryMovementsState((prev) => {
         const upd = [movement, ...prev];
         if (typeof window !== "undefined") {
-          localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(upd));
+          try {
+            localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
         }
         return upd;
       });
 
       logAudit("PENYESUAIAN_STOK", "Inventaris", `Penyesuaian stok ${prod.name} dari ${prevStock} menjadi ${newStock}. Alasan: ${reason}`);
-      showToast(`Stok ${prod.name} berhasil diperbarui menjadi ${newStock}!`, "success");
+      showToast(`Stok "${prod.name}" berhasil disesuaikan menjadi ${newStock}!`, "success");
       return true;
     },
     [products, currentUser.name, logAudit, showToast]
   );
 
-  const resetToDefaultData = useCallback(() => {
+  // Delete inventory movement
+  const deleteInventoryMovement = useCallback(
+    (movementId: string): { success: boolean; message: string } => {
+      let refNo = "";
+
+      setInventoryMovementsState((prev) => {
+        const target = prev.find((m) => m.id === movementId);
+        if (target) refNo = target.reference_no;
+        const upd = prev.filter((m) => m.id !== movementId);
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem(STORAGE_KEYS.MOVEMENTS, JSON.stringify(upd));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return upd;
+      });
+
+      const label = refNo || movementId;
+      logAudit("HAPUS_MUTASI_STOK", "Inventaris", `Menghapus catatan mutasi stok: ${label}`);
+      showToast(`Catatan mutasi stok "${label}" berhasil dihapus.`, "success");
+      return { success: true, message: "Catatan mutasi berhasil dihapus." };
+    },
+    [logAudit, showToast]
+  );
+
+  // Clear all data (Guarantee complete clean slate)
+  const clearAllData = useCallback(() => {
     if (typeof window !== "undefined") {
-      localStorage.clear();
+      try {
+        localStorage.removeItem(STORAGE_KEYS.PRODUCTS);
+        localStorage.removeItem(STORAGE_KEYS.CATEGORIES);
+        localStorage.removeItem(STORAGE_KEYS.SUPPLIERS);
+        localStorage.removeItem(STORAGE_KEYS.PURCHASES);
+        localStorage.removeItem(STORAGE_KEYS.EXPENSES);
+        localStorage.removeItem(STORAGE_KEYS.SALES);
+        localStorage.removeItem(STORAGE_KEYS.MOVEMENTS);
+        localStorage.removeItem(STORAGE_KEYS.PRICE_HISTORIES);
+        localStorage.removeItem(STORAGE_KEYS.AUDIT_LOGS);
+        localStorage.setItem(STORAGE_KEYS.PURGE_FLAG, "true");
+      } catch (e) {
+        console.error(e);
+      }
     }
-    setSettingsState(initialStoreSettings);
-    setCategoriesState(initialCategories);
-    setProductsState(initialProducts);
-    setSuppliersState(initialSuppliers);
-    setPurchasesState(initialPurchases);
-    setExpensesState(initialExpenses);
-    setSalesState(initialSales);
-    setInventoryMovementsState(initialInventoryMovements);
-    setAuditLogsState(initialAuditLogs);
+    setCategoriesState([]);
+    setProductsState([]);
+    setSuppliersState([]);
+    setPurchasesState([]);
+    setExpensesState([]);
+    setSalesState([]);
+    setInventoryMovementsState([]);
     setPriceHistoriesState([]);
-    showToast("Data aplikasi berhasil direset ke data default!", "info");
+    setAuditLogsState([]);
+    showToast("Semua data transaksi dan produk berhasil dibersihkan! Sistem kini bersih tanpa data dummy.", "success");
   }, [showToast]);
+
+  const resetToDefaultData = useCallback(() => {
+    clearAllData();
+  }, [clearAllData]);
 
   return (
     <StoreContext.Provider
       value={{
         currentUser,
         setCurrentUser,
+        adminProfile,
+        updateAdminProfile,
         switchRole,
         settings,
         updateSettings,
@@ -1057,6 +1404,7 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         recordSupplierPayment,
         purchases,
         addPurchase,
+        deletePurchase,
         expenses,
         addExpense,
         updateExpense,
@@ -1064,13 +1412,16 @@ export const StoreProvider = ({ children }: { children: ReactNode }) => {
         sales,
         completeCheckout,
         cancelSale,
+        deleteSale,
         inventoryMovements,
         addStockAdjustment,
+        deleteInventoryMovement,
         auditLogs,
         priceHistories,
         toasts,
         showToast,
         removeToast,
+        clearAllData,
         resetToDefaultData,
         isLoaded,
       }}

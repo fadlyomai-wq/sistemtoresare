@@ -6,12 +6,14 @@ import { useStore } from "@/lib/storage/store-context";
 import { Supplier } from "@/types";
 import { formatRupiah, formatDateID } from "@/lib/utils";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function SuppliersView() {
   const { suppliers, purchases, addSupplier, updateSupplier, deleteSupplier } = useStore();
 
   const [showModal, setShowModal] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = useState<Supplier | null>(null);
 
   const [name, setName] = useState("");
   const [contactPerson, setContactPerson] = useState("");
@@ -79,12 +81,7 @@ export function SuppliersView() {
   };
 
   const handleDelete = (s: Supplier) => {
-    if (confirm(`Hapus supplier "${s.name}"?`)) {
-      const res = deleteSupplier(s.id);
-      if (!res.success) {
-        alert(res.message);
-      }
-    }
+    setSupplierToDelete(s);
   };
 
   return (
@@ -139,9 +136,12 @@ export function SuppliersView() {
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDelete(s)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
-                      title="Hapus"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(s);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Hapus Supplier"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -335,6 +335,22 @@ export function SuppliersView() {
           )}
         </div>
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(supplierToDelete)}
+        onClose={() => setSupplierToDelete(null)}
+        onConfirm={() => {
+          if (supplierToDelete) {
+            deleteSupplier(supplierToDelete.id);
+            setSupplierToDelete(null);
+          }
+        }}
+        title="Hapus Data Supplier"
+        description={`Apakah Anda yakin ingin menghapus supplier "${supplierToDelete?.name}"? Data supplier akan dihapus dari sistem.`}
+        confirmText="Hapus Supplier"
+        cancelText="Batal"
+      />
     </div>
   );
 }

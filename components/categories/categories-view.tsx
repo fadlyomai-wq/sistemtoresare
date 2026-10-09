@@ -6,12 +6,14 @@ import { useStore } from "@/lib/storage/store-context";
 import { Category } from "@/types";
 import { formatDateID } from "@/lib/utils";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function CategoriesView() {
   const { categories, products, addCategory, updateCategory, deleteCategory } = useStore();
 
   const [showModal, setShowModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [status, setStatus] = useState<"active" | "inactive">("active");
@@ -45,12 +47,7 @@ export function CategoriesView() {
   };
 
   const handleDelete = (c: Category) => {
-    if (confirm(`Hapus kategori "${c.name}"?`)) {
-      const res = deleteCategory(c.id);
-      if (!res.success) {
-        alert(res.message);
-      }
-    }
+    setCategoryToDelete(c);
   };
 
   return (
@@ -104,8 +101,11 @@ export function CategoriesView() {
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
                     <button
-                      onClick={() => handleDelete(cat)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(cat);
+                      }}
+                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
                       title="Hapus Kategori"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -189,6 +189,22 @@ export function CategoriesView() {
           </div>
         </form>
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(categoryToDelete)}
+        onClose={() => setCategoryToDelete(null)}
+        onConfirm={() => {
+          if (categoryToDelete) {
+            deleteCategory(categoryToDelete.id);
+            setCategoryToDelete(null);
+          }
+        }}
+        title="Hapus Kategori Produk"
+        description={`Apakah Anda yakin ingin menghapus kategori "${categoryToDelete?.name}"? Produk yang terkait dengan kategori ini akan dialihkan ke kategori Umum.`}
+        confirmText="Hapus Kategori"
+        cancelText="Batal"
+      />
     </div>
   );
 }

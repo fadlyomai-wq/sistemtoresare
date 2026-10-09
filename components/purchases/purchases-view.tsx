@@ -19,9 +19,11 @@ import { useStore } from "@/lib/storage/store-context";
 import { Purchase, PurchaseCategory, PurchaseItem, PurchasePaymentStatus, PurchaseReceiveStatus } from "@/types";
 import { formatRupiah, formatNumber, formatDateID } from "@/lib/utils";
 import { Modal } from "../ui/modal";
+import { ConfirmDialog } from "../ui/confirm-dialog";
 
 export function PurchasesView() {
-  const { purchases, suppliers, products, addPurchase, recordSupplierPayment } = useStore();
+  const { purchases, suppliers, products, addPurchase, recordSupplierPayment, deletePurchase } = useStore();
+  const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
@@ -368,7 +370,7 @@ export function PurchasesView() {
                       </span>
                     </td>
                     <td className="p-3.5 pr-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
                           onClick={() => setSelectedPurchaseDetail(p)}
                           className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold"
@@ -380,9 +382,19 @@ export function PurchasesView() {
                             onClick={() => handleOpenPayDebt(p)}
                             className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold"
                           >
-                            Bayar Hutang
+                            Bayar
                           </button>
                         )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPurchaseToDelete(p);
+                          }}
+                          title="Hapus Faktur Pembelian"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -731,6 +743,22 @@ export function PurchasesView() {
           </div>
         )}
       </Modal>
+
+      {/* CONFIRM DELETE MODAL */}
+      <ConfirmDialog
+        isOpen={Boolean(purchaseToDelete)}
+        onClose={() => setPurchaseToDelete(null)}
+        onConfirm={() => {
+          if (purchaseToDelete) {
+            deletePurchase(purchaseToDelete.id);
+            setPurchaseToDelete(null);
+          }
+        }}
+        title="Hapus Faktur Pembelian"
+        description={`Apakah Anda yakin ingin menghapus faktur pembelian "${purchaseToDelete?.purchase_number}" dari supplier ${purchaseToDelete?.supplier_name}?`}
+        confirmText="Hapus Faktur"
+        cancelText="Batal"
+      />
     </div>
   );
 }
